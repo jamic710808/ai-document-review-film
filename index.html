@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>AI 文檔審核系統 · 動態介紹片</title>
+<meta name="viewport" content="width=1920,height=1080">
+<style>
+:root{
+  --bg:#080C14; --bg2:#0D1320; --panel:#111827; --panel2:#161F32; --line:#26304A;
+  --text:#EAF0FF; --mute:#8FA0C4; --blue:#4C8DF6; --blue2:#2F6FDB; --red:#FF5A5F; --green:#36D399; --amber:#F5B84B;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;background:var(--bg);overflow:hidden}
+body{font-family:"Segoe UI","Microsoft JhengHei UI","Microsoft JhengHei","PingFang TC",sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:
+  radial-gradient(1200px 700px at 78% 18%,#14233f 0%,transparent 60%),
+  radial-gradient(900px 600px at 10% 95%,#0f1d36 0%,transparent 60%),var(--bg)}
+.abs{position:absolute}
+.beat{position:absolute;inset:0;will-change:transform,opacity}
+.beat img{display:block}
+.shot{position:absolute;left:0;top:0;width:2000px;height:1200px;transform-origin:0 0;border-radius:10px;box-shadow:0 30px 120px rgba(0,0,0,.6)}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:999px;font-weight:700;font-size:26px;border:1.5px solid var(--line);background:rgba(255,255,255,.04);white-space:nowrap}
+.chip.red{color:#ff8a8d;border-color:#7a2a30;background:rgba(255,90,95,.1)}
+.chip.green{color:var(--green);border-color:#1f6b50;background:rgba(54,211,153,.1)}
+.chip.blue{color:#8db8ff;border-color:#2c4f8f;background:rgba(76,141,246,.12)}
+.chip.amber{color:var(--amber);border-color:#7a5a1d;background:rgba(245,184,75,.1)}
+.panel{background:linear-gradient(180deg,#141c2e,#0f1626);border:1.5px solid var(--line);border-radius:22px;box-shadow:0 40px 120px rgba(0,0,0,.55)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:76px;padding:0 30px;border-radius:14px;font-size:30px;font-weight:700;border:2px solid #3a4666;background:#141c2e;color:var(--text);white-space:nowrap}
+#rail{position:absolute;left:84px;top:40px;right:84px;height:44px;display:flex;align-items:center;gap:14px;z-index:20}
+#rail .dot{height:12px;border-radius:12px;background:#27324d;transition:none;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:22px;font-weight:700;color:transparent;white-space:nowrap}
+#caption{position:absolute;left:0;right:0;bottom:56px;display:flex;justify-content:center;z-index:30;pointer-events:none}
+#caption span{font-size:46px;font-weight:700;letter-spacing:1px;padding:10px 34px 12px;border-radius:16px;background:rgba(6,9,16,.78);color:#fff;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px)}
+#sweep{position:absolute;top:-200px;width:380px;height:1500px;background:linear-gradient(90deg,transparent,rgba(120,170,255,.16),rgba(255,255,255,.22),rgba(120,170,255,.16),transparent);transform:skewX(-18deg);z-index:25;pointer-events:none;opacity:0}
+.h-xl{font-weight:900;letter-spacing:2px;line-height:1.05}
+.cursor{position:absolute;width:44px;height:44px;z-index:12;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6))}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="rail"></div>
+  <div id="sweep"></div>
+  <div id="caption"><span></span></div>
+</div>
+<script src="timeline.js"></script>
+<script>
+/* ---------- helpers: everything is a pure function of t ---------- */
+const W=1920,H=1080,TL=window.TL;
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const eo=x=>1-Math.pow(1-clamp(x),3);
+const eo5=x=>1-Math.pow(1-clamp(x),5);
+const eio=x=>{x=clamp(x);return x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2};
+const eob=x=>{x=clamp(x);const c=1.5;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
+const lerp=(a,b,u)=>a+(b-a)*u;
+const seg=(t,a,b)=>clamp((t-a)/(b-a));
+const stage=document.getElementById('stage');
+const $=(html)=>{const d=document.createElement('div');d.innerHTML=html.trim();return d.firstChild};
+const css=(el,o)=>{for(const k in o)el.style[k]=o[k]};
+const SPEECH=(b)=>b.speech.map(s=>[s[0]+(b.voiceStart-b.start),s[1]+(b.voiceStart-b.start)]); // beat-local speech spans
+
+const SHIELD=`<svg viewBox="0 0 64 64" width="100%" height="100%"><rect width="64" height="64" rx="16" fill="#2F6FDB"/><path d="M32 12l15 5.5v13c0 9.6-6.2 17.2-15 20.5-8.8-3.3-15-10.9-15-20.5v-13z" fill="none" stroke="#fff" stroke-width="3.6" stroke-linejoin="round"/><path d="M24.5 31.5l5.6 5.6 10.4-11" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const CURSOR=`<svg viewBox="0 0 32 32" width="44" height="44"><path d="M5 3l20 10-8.5 2.2L13 24z" fill="#fff" stroke="#0a0f1a" stroke-width="2" stroke-linejoin="round"/></svg>`;
+const CHECK=`<svg viewBox="0 0 24 24" width="30" height="30"><path d="M5 12.5l4.6 4.6L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/* page crops (from real screenshot) coordinates, in 1074x1476 space */
+const PG_W=1074,PG_H=1476;
+const BOXES=[ // x,y,w,h, label
+ [126,128,828,146,'表格'],[128,280,826,74,'段落'],[128,360,826,74,'段落'],[128,448,620,30,'標題'],
+ [126,480,828,176,'表格'],[128,660,640,34,'段落'],[128,742,826,118,'段落'],[128,872,460,30,'標題'],
+ [128,912,826,204,'段落'],[128,1208,826,160,'段落']];
+const HL={x:190,y:1086,w:884,h:226}; // red highlight on right page
+
+/* ---------- beats ---------- */
+const beats=[];
+function addBeat(id,build,update){
+  const b=TL.beats.find(x=>x.id===id);
+  const root=$(`<div class="beat" id="${id}"></div>`); stage.insertBefore(root,document.getElementById('rail'));
+  const ctx=build(root,b)||{};
+  beats.push({b,root,ctx,update});
+}
+
+/* ===== b01 hook ===== */
+addBeat('b01',(root,b)=>{
+  const wall=$(`<div class="abs" style="left:-300px;top:-260px;width:2600px;height:1700px;transform:rotate(-9deg);opacity:.5"></div>`);
+  const rows=[];
+  for(let r=0;r<4;r++){
+    const row=$(`<div class="abs" style="left:0;top:${r*400}px;width:4200px;height:380px;display:flex;gap:40px"></div>`);
+    for(let i=0;i<16;i++) row.appendChild($(`<img src="assets/pageL.png" style="width:276px;height:380px;border-radius:6px;opacity:${.55+((i*7+r*3)%5)*.08};filter:brightness(.78)">`));
+    wall.appendChild(row); rows.push(row);
+  }
+  root.appendChild(wall);
+  root.appendChild($(`<div class="abs" style="inset:0;background:linear-gradient(90deg,rgba(8,12,20,.96) 0%,rgba(8,12,20,.8) 42%,rgba(8,12,20,.15) 100%)"></div>`));
+  const txt=$(`<div class="abs" style="left:110px;top:210px;width:1100px;transform-origin:40% 55%">
+    <div style="font-size:60px;font-weight:700;color:var(--mute);letter-spacing:4px">合約、年報、法務文件</div>
+    <div class="h-xl" style="font-size:170px;margin-top:10px">風險，藏在</div>
+    <div class="h-xl" style="position:relative;font-size:250px;margin-top:-6px;display:inline-block"><i id="hlbar" style="position:absolute;left:-12px;right:-16px;top:34px;bottom:2px;background:var(--red);opacity:.88;transform-origin:0 50%;border-radius:8px;z-index:0"></i><span style="position:relative;z-index:1">哪一句？</span></div>
+  </div>`);
+  root.appendChild(txt);
+  const pg=$(`<div class="abs" style="left:1210px;top:150px;width:560px;height:770px;transform:rotate(4deg);transform-origin:50% 50%;border-radius:10px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.7)"><img src="assets/pageR.png" style="width:560px;height:770px"><i style="position:absolute;left:${HL.x/PG_W*560}px;top:${HL.y/PG_H*770}px;width:${HL.w/PG_W*560}px;height:${HL.h/PG_H*770}px;background:rgba(255,90,95,.55);mix-blend-mode:multiply"></i></div>`);
+  root.appendChild(pg);
+  return {rows,txt,hl:txt.querySelector('#hlbar'),pg};
+},(c,lt,L)=>{
+  c.rows.forEach((r,i)=>{const sp=60+i*22;r.style.transform=`translateX(${-(((lt*sp)+i*210)%(316*4))}px)`});
+  c.hl.style.transform=`scaleX(${lerp(.4,1,eo(seg(lt,0.0,.9)))})`;
+  const out=eio(seg(lt,L-0.62,L-0.02));
+  css(c.txt,{transform:`scale(${lerp(1,2.6,out)})`,opacity:String(1-out*1.05),filter:`blur(${out*14}px)`});
+  const pu=seg(lt,0,L);
+  c.pg.style.transform=`rotate(${lerp(4,4,pu)}deg) scale(${1+pu*.03})`;
+});
+
+/* ===== b02 title ===== */
+addBeat('b02',(root,b)=>{
+  const logo=$(`<div class="abs" style="left:116px;top:200px;width:150px;height:150px">${SHIELD}</div>`);
+  const t1=$(`<div class="abs h-xl" style="left:108px;top:370px;font-size:124px;white-space:nowrap">AI 文檔審核系統</div>`);
+  const t2=$(`<div class="abs" style="left:112px;top:560px;font-size:84px;font-weight:800;color:#8db8ff;letter-spacing:4px">先幫你讀第一遍</div>`);
+  const chips=$(`<div class="abs" style="left:112px;top:730px;display:flex;gap:22px"><span class="chip blue" style="font-size:36px;padding:12px 28px">解析版面</span><span class="chip blue" style="font-size:36px;padding:12px 28px">逐段審核</span><span class="chip red" style="font-size:36px;padding:12px 28px">標出位置</span></div>`);
+  const pg=$(`<div class="abs" style="left:1230px;top:96px;width:620px;height:854px;transform-origin:50% 50%;border-radius:12px;overflow:hidden;box-shadow:0 50px 140px rgba(0,0,0,.75)"><img src="assets/pageR.png" style="width:620px;height:854px"><i id="hl" style="position:absolute;left:${HL.x/PG_W*620}px;top:${HL.y/PG_H*854}px;width:${HL.w/PG_W*620}px;height:${HL.h/PG_H*854}px;background:rgba(255,90,95,.55);mix-blend-mode:multiply"></i></div>`);
+  [pg,logo,t1,t2,chips].forEach(e=>root.appendChild(e));
+  return {logo,t1,t2,chips,pg};
+},(c,lt,L)=>{
+  const p0=lt; // page eases from b01 pose (rotate 4deg, 560x770 @1210,150) to hero pose
+  const u=eo5(seg(p0,0,0.7));
+  css(c.pg,{transform:`translate(${lerp(30,0,u)}px,${lerp(66,0,u)}px) rotate(${lerp(4,0,u)}deg) scale(${lerp(.9,1,u)})`});
+  const a=(el,t0,dy=40)=>{const u=eo(seg(lt,t0,t0+.55));css(el,{opacity:String(u),transform:`translateY(${(1-u)*dy}px)`})};
+  a(c.logo,0.25,50);a(c.t1,0.4);a(c.t2,0.75);a(c.chips,1.5,30);
+  const out=eio(seg(lt,L-.45,L));
+  css(c.pg,{filter:`brightness(${1-out*.4})`});
+});
+
+/* ===== b03 parse ===== */
+addBeat('b03',(root,b)=>{
+  const PW=640,PH=PW*PG_H/PG_W,k=PW/PG_W;
+  const page=$(`<div class="abs" style="left:170px;top:104px;width:${PW}px;height:${PH}px;border-radius:10px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.7)"><img src="assets/pageL.png" style="width:${PW}px;height:${PH}px"></div>`);
+  const boxes=BOXES.map((bx,i)=>{const e=$(`<div class="abs" style="left:${bx[0]*k}px;top:${bx[1]*k}px;width:${bx[2]*k}px;height:${bx[3]*k}px;border:3px solid var(--blue);background:rgba(76,141,246,.14);border-radius:6px;opacity:0"><b style="position:absolute;left:-3px;top:-30px;background:var(--blue);color:#fff;font-size:20px;padding:2px 10px;border-radius:6px 6px 6px 0">${i+1}</b></div>`);page.appendChild(e);return e});
+  const scan=$(`<div class="abs" style="left:0;width:${PW}px;height:6px;background:linear-gradient(90deg,transparent,#9cc2ff,transparent);box-shadow:0 0 40px 10px rgba(110,170,255,.55);opacity:0"></div>`);page.appendChild(scan);
+  const head=$(`<div class="abs h-xl" style="left:960px;top:150px;font-size:118px;line-height:1.12">拆成<br><span style="color:#8db8ff">一段一段</span></div>`);
+  const steps=['PDF 上傳','版面解析','段落切塊','逐段送審'].map((s,i)=>$(`<div class="abs panel" style="left:960px;top:${520+i*118}px;width:760px;height:92px;border-radius:16px;display:flex;align-items:center;gap:22px;padding:0 30px;opacity:.35"><i style="width:30px;height:30px;border-radius:30px;border:3px solid var(--blue);display:block;flex:none"></i><span style="font-size:38px;font-weight:800">${s}</span>${i===1?'<span class="chip blue" style="margin-left:auto;font-size:30px">MinerU</span>':''}</div>`));
+  [page,head,...steps].forEach(e=>root.appendChild(e));
+  return {page,boxes,scan,head,steps,PH};
+},(c,lt,L)=>{
+  const u0=eo(seg(lt,0,.6));css(c.page,{opacity:String(u0),transform:`translateX(${(1-u0)*-80}px)`});
+  css(c.head,{opacity:String(eo(seg(lt,.3,.9))),transform:`translateY(${(1-eo(seg(lt,.3,.9)))*30}px)`});
+  const sc=seg(lt,0.85,3.7); c.scan.style.opacity=(sc>0&&sc<1)?'1':'0'; c.scan.style.top=(sc*c.PH)+'px';
+  c.boxes.forEach((e,i)=>{const t0=1.0+i*.3;const u=eob(seg(lt,t0,t0+.4));e.style.opacity=String(clamp(u));e.style.transform=`scale(${lerp(1.04,1,clamp(u))})`});
+  const act=[0.9,1.9,2.9,4.1];
+  c.steps.forEach((s,i)=>{const on=lt>=act[i];const u=eo(seg(lt,act[i],act[i]+.4));s.style.opacity=String(lerp(.35,1,u));s.style.borderColor=on?'#3a6bc4':'';const dot=s.querySelector('i');dot.style.background=on?'var(--blue)':'transparent'});
+});
+
+/* ===== b04 progress ===== */
+addBeat('b04',(root,b)=>{
+  const bg=$(`<img class="shot" src="assets/09_progress_ui_injected.png" style="filter:blur(7px) brightness(.35);opacity:.9">`);
+  const card=$(`<div class="abs panel" style="left:160px;top:150px;width:1600px;height:720px;padding:70px 80px">
+    <div style="display:flex;align-items:center;gap:36px">
+      <svg id="spin" width="140" height="140" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke="#243455" stroke-width="5"/><path d="M25 5a20 20 0 0 1 20 20" fill="none" stroke="#4C8DF6" stroke-width="5" stroke-linecap="round"/></svg>
+      <div id="stxt" style="font-size:112px;font-weight:900;letter-spacing:2px">第 1 / 8 段完成</div></div>
+    <div style="margin-top:70px;height:32px;border-radius:32px;background:#1d2840;overflow:hidden"><i id="bar" style="display:block;height:100%;width:0;background:linear-gradient(90deg,#2f6fdb,#6aa6ff);border-radius:26px"></i></div>
+    <div id="ticks" style="margin-top:44px;display:flex;gap:18px"></div>
+    <div style="margin-top:44px;font-size:42px;color:var(--mute);font-weight:700">審完一段，先送回一段結果　·　示意動畫</div></div>`);
+  const ticks=card.querySelector('#ticks');const tk=[];
+  for(let i=0;i<8;i++){const e=$(`<div style="flex:1;height:120px;border-radius:16px;border:2px solid #2b3858;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:800;color:#5d6d92">${i+1}</div>`);ticks.appendChild(e);tk.push(e)}
+  root.appendChild(bg);root.appendChild(card);
+  return {bg,card,spin:card.querySelector('#spin'),stxt:card.querySelector('#stxt'),bar:card.querySelector('#bar'),tk};
+},(c,lt,L)=>{
+  const s=.96+lt*.004;c.bg.style.transform=`translate(0,0) scale(${s})`;
+  const u=eob(seg(lt,.1,.8));css(c.card,{opacity:String(clamp(u)),transform:`translateY(${(1-clamp(u))*60}px) scale(${lerp(.96,1,clamp(u))})`});
+  const p=seg(lt,0.6,5.6); const n=Math.min(8,1+Math.floor(p*7.999));
+  c.stxt.textContent=`第 ${n} / 8 段完成`;
+  c.bar.style.width=(p*100)+'%';
+  c.spin.style.transform=`rotate(${lt*360}deg)`;
+  c.tk.forEach((e,i)=>{const on=i<n;e.style.background=on?'rgba(76,141,246,.22)':'transparent';e.style.borderColor=on?'#4C8DF6':'#2b3858';e.style.color=on?'#cfe0ff':'#5d6d92'});
+});
+
+/* ===== b05 overview ===== */
+addBeat('b05',(root,b)=>{
+  const bg=$(`<img class="shot" src="assets/03_review_overview.png" style="filter:blur(6px) brightness(.38)">`);
+  const card=$(`<div class="abs panel" style="left:160px;top:150px;width:1600px;height:700px;transform-origin:50% 50%;padding:50px 70px">
+    <div style="font-size:40px;font-weight:800;color:var(--mute);letter-spacing:6px">審閱概覽</div>
+    <div style="display:flex;gap:70px;margin-top:10px;align-items:center">
+      <div style="width:700px"><div style="display:flex;align-items:baseline;gap:18px;white-space:nowrap"><span id="num" style="font-size:320px;font-weight:900;line-height:1;letter-spacing:-6px">0</span><span style="font-size:64px;font-weight:800">條問題</span></div>
+        <div style="display:flex;gap:18px;margin-top:20px"><span class="chip" style="font-size:30px">進度 0 / 59</span><span id="verdict" class="chip red" style="font-size:30px;opacity:0">需修正</span></div></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:46px;margin-top:34px">
+        ${[['高風險','var(--red)',10,'hi'],['中風險','var(--amber)',0,'mid'],['低風險','var(--green)',49,'lo']].map(r=>`<div><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:44px;font-weight:800">${r[0]}</span><span id="n_${r[3]}" style="font-size:80px;font-weight:900;color:${r[1]}">0</span></div><div style="height:22px;border-radius:22px;background:#1d2840;margin-top:6px;overflow:hidden"><i id="b_${r[3]}" style="display:block;height:100%;width:0;background:${r[1]};border-radius:22px"></i></div></div>`).join('')}
+      </div></div></div>`);
+  root.appendChild(bg);root.appendChild(card);
+  const q=id=>card.querySelector('#'+id);
+  return {bg,card,num:q('num'),verdict:q('verdict'),nh:q('n_hi'),nm:q('n_mid'),nl:q('n_lo'),bh:q('b_hi'),bm:q('b_mid'),bl:q('b_lo')};
+},(c,lt,L)=>{
+  c.bg.style.transform=`scale(${.96+lt*.003})`;
+  // card grows out of the screenshot's 審閱概覽 panel (screenshot px 1565..1960,110..280 -> stage)
+  const u=eo5(seg(lt,.0,.9));const sx=1762*.96,sy=195*.96;
+  css(c.card,{transform:`translate(${lerp(sx-960,0,u)}px,${lerp(sy-500,0,u)}px) scale(${lerp(.25,1,u)})`,opacity:String(clamp(u*3))});
+  const n=Math.round(59*eo(seg(lt,2.7,4.7)));c.num.textContent=n;
+  const hi=Math.round(10*eo(seg(lt,5.6,6.4))),lo=Math.round(49*eo(seg(lt,4.9,6.0)));
+  c.nh.textContent=hi;c.nh.style.transform=`scale(${1+.35*Math.max(0,Math.sin(clamp((lt-6.35)/.5)*Math.PI))})`;c.nh.style.transformOrigin='100% 50%';c.nl.textContent=lo;c.nm.textContent='0';
+  c.bh.style.width=(10/59*100*eo(seg(lt,5.6,6.6))*2.2)+'%';
+  c.bl.style.width=(49/59*100*eo(seg(lt,4.9,6.2)))+'%';
+  c.bm.style.width='0%';
+  c.verdict.style.opacity=String(eo(seg(lt,6.6,7.0)));
+  c.num.style.color=lt>5.5?'#fff':'#fff';
+});
+
+/* ===== b06 locate (camera on real screenshot) ===== */
+function camXform(r,s0){ // r: focus rect in screenshot px ; returns transform string
+  const s=Math.min(W/r.w,(H*0.80)/r.h);const cx=r.x+r.w/2,cy=r.y+r.h/2;
+  return {s,tx:960-cx*s,ty:540-cy*s};
+}
+function camLerp(a,b,u){const A=camXform(a),B=camXform(b);const s=Math.exp(lerp(Math.log(A.s),Math.log(B.s),u));
+  const ca={x:a.x+a.w/2,y:a.y+a.h/2},cb={x:b.x+b.w/2,y:b.y+b.h/2};const cx=lerp(ca.x,cb.x,u),cy=lerp(ca.y,cb.y,u);
+  return `translate(${960-cx*s}px,${540-cy*s}px) scale(${s})`;}
+const FULL={x:0,y:0,w:2000,h:1200};
+addBeat('b06',(root,b)=>{
+  const cam=$(`<div class="shot" style="background:#000"></div>`);
+  cam.appendChild($(`<img src="assets/04_issue_detail.png" style="width:2000px;height:1200px;border-radius:10px">`));
+  const sel=$(`<div class="abs" style="left:383px;top:938px;width:290px;height:162px;border:5px solid var(--blue);border-radius:16px;box-shadow:0 0 0 0 rgba(76,141,246,.7);opacity:0"></div>`);
+  const hl=$(`<div class="abs" style="left:1141px;top:606px;width:358px;height:82px;border:5px solid var(--red);border-radius:6px;box-shadow:0 0 60px 10px rgba(255,90,95,.55);opacity:0"></div>`);
+  const line=$(`<svg class="abs" style="left:0;top:0" width="2000" height="1200"><path id="lead" d="M673 1019 C 900 1019, 960 650, 1141 647" fill="none" stroke="#ff8a8d" stroke-width="5" stroke-dasharray="1400" stroke-dashoffset="1400" stroke-linecap="round"/></svg>`);
+  const lab=$(`<div class="abs" style="left:110px;top:130px;opacity:0;white-space:nowrap"><span class="chip red" style="font-size:44px;padding:12px 30px;background:rgba(40,10,14,.9)">P11 · 確定性／保證性措辭 · 高風險</span></div>`);
+  [sel,line,hl].forEach(e=>cam.appendChild(e));
+  root.appendChild(cam);root.appendChild(lab);
+  return {cam,sel,hl,line:line.querySelector('#lead'),lab};
+},(c,lt,L)=>{
+  const W0=FULL,W1={x:1141,y:548,w:358,h:186};
+  const mv=eio(seg(lt,1.9,3.3));
+  const full=camLerp(W0,W1,mv);
+  // gentle drift before the move
+  c.cam.style.transform=full;
+  const iu=eo(seg(lt,.0,.5));c.cam.style.opacity=String(iu);
+  const sU=eo(seg(lt,.8,1.2));c.sel.style.opacity=String(sU);c.sel.style.boxShadow=`0 0 ${40*sU}px ${6*sU}px rgba(76,141,246,${.55*sU})`;
+  c.line.style.strokeDashoffset=String(1400*(1-eo(seg(lt,1.05,2.1))));
+  const hU=eo(seg(lt,2.4,3.0));c.hl.style.opacity=String(hU);
+  const pulse=.6+.4*Math.sin(lt*7);c.hl.style.boxShadow=`0 0 ${50*pulse}px ${8*pulse}px rgba(255,90,95,${.6*hU})`;
+  c.lab.style.opacity=String(eo(seg(lt,3.7,4.2)));
+  c.lab.style.transform=`translateY(${(1-eo(seg(lt,3.7,4.2)))*14}px)`;
+  c.line.parentNode.style.opacity=String(1-eo(seg(lt,2.7,3.3)));
+});
+
+/* ===== b07 decide ===== */
+addBeat('b07',(root,b)=>{
+  const words=[['採納','var(--green)'],['不採納','var(--red)'],['人工複核','var(--blue)']].map((w,i)=>$(`<div class="abs h-xl" style="left:112px;top:${190+i*210}px;font-size:138px;color:${w[1]};opacity:.22;white-space:nowrap">${w[0]}</div>`));
+  const panel=$(`<div class="abs panel" style="left:790px;top:110px;width:1030px;height:790px;padding:40px 48px">
+    <div style="font-size:42px;font-weight:800">沒有損害基金份額持有人利益的行為。</div>
+    <div style="display:flex;gap:14px;margin-top:18px;align-items:center"><span class="chip red" style="font-size:26px">高風險</span><span class="chip" style="font-size:26px">確定性／保證性措辭</span><span class="chip" style="font-size:26px">P11</span><span id="state" class="chip" style="font-size:26px;margin-left:auto">未處理</span></div>
+    <div style="margin-top:30px;font-size:26px;color:var(--mute);font-weight:700">問題說明</div>
+    <div style="margin-top:10px;padding:20px 24px;border:1.5px solid var(--line);border-radius:14px;background:#0c1220;font-size:34px;line-height:1.5">使用了绝对化的表述"没有"，在合规或审计语境下，这种完全否定的断言可能过于绝对，难以被绝对证实。</div>
+    <div style="margin-top:26px;font-size:26px;color:var(--mute);font-weight:700">修改建議</div>
+    <div style="margin-top:10px;padding:20px 24px;border:1.5px solid var(--line);border-radius:14px;background:#0c1220;font-size:34px;line-height:1.5">建议修改为更审慎的表述，例如"未发现损害基金份额持有人利益的行为"或"不存在已知的损害基金份额持有人利益的行为"。</div>
+    <div style="position:absolute;left:48px;right:48px;bottom:40px;display:flex;gap:18px">
+      <span id="bm" class="btn" style="flex:1">✎ 人工複核</span><span id="br" class="btn" style="flex:1">✕ 不採納</span><span id="ba" class="btn" style="flex:1.15;background:#2f6fdb;border-color:#2f6fdb">${CHECK} 採納建議</span></div></div>`);
+  const cur=$(`<div class="cursor">${CURSOR}</div>`);
+  words.forEach(w=>root.appendChild(w));root.appendChild(panel);root.appendChild(cur);
+  const q=id=>panel.querySelector('#'+id);
+  return {words,panel,cur,bm:q('bm'),br:q('br'),ba:q('ba'),state:q('state')};
+},(c,lt,L)=>{
+  const u=eo5(seg(lt,.0,.7));css(c.panel,{opacity:String(u),transform:`translateX(${(1-u)*120}px)`});
+  const win=[[3.45,4.1],[4.1,4.85],[4.85,6.3]]; // 採納 / 不採納 / 人工複核 spoken
+  c.words.forEach((w,i)=>{const on=lt>=win[i][0]&&lt<win[i][1]+ (i==2?.4:0);const u=eo(seg(lt,win[i][0],win[i][0]+.25));w.style.opacity=String(lerp(.22,1,on?u:0)+ (lt>=win[i][1]+.0&&i<2?0:0));w.style.transform=`translateX(${on?18*u:0}px)`});
+  const flash=(btn,t0,t1,col)=>{const on=lt>=t0&&lt<t1;btn.style.boxShadow=on?`0 0 0 4px ${col}`:'none'};
+  flash(c.ba,3.45,4.1,'#36D399');flash(c.br,4.1,4.85,'#FF5A5F');flash(c.bm,4.85,6.3,'#4C8DF6');
+  // cursor: travels to 採納 and clicks at 6.9
+  const cx=lerp(1500,1560,eo(seg(lt,5.9,6.8))),cy=lerp(520,880,eio(seg(lt,5.9,6.8)));
+  css(c.cur,{left:cx+'px',top:cy+'px',opacity:String(eo(seg(lt,5.8,6.1))),transform:`scale(${lt>6.9&&lt<7.05?.86:1})`});
+  const done=lt>=6.95;
+  c.ba.style.background=done?'#17a673':'#2f6fdb';c.ba.style.borderColor=done?'#17a673':'#2f6fdb';
+  c.ba.lastChild.textContent=done?' 已採納':' 採納建議';
+  c.state.textContent=done?'已採納':'未處理';c.state.className='chip '+(done?'green':'');c.state.style.fontSize='26px';c.state.style.marginLeft='auto';
+  const w=c.words[0];if(done){w.style.opacity='1'}
+});
+
+/* ===== b08 rules ===== */
+addBeat('b08',(root,b)=>{
+  const bg=$(`<img class="shot" src="assets/05_rules_panel.png" style="filter:blur(8px) brightness(.32)">`);
+  const head=$(`<div class="abs h-xl" style="left:112px;top:230px;font-size:140px;line-height:1.12">自己加<br>規則<div style="font-size:50px;font-weight:700;color:#8db8ff;margin-top:34px;letter-spacing:3px">逐份文件，決定套不套用</div></div>`);
+  const panel=$(`<div class="abs panel" style="left:820px;top:200px;width:1000px;height:620px;padding:0;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:16px;padding:34px 44px;font-size:42px;font-weight:800">審核規則 <span id="cnt" class="chip" style="font-size:28px">0 / 1</span><span style="margin-left:auto;color:var(--mute);font-size:36px">⌄</span></div>
+    <div id="row" style="display:flex;align-items:center;gap:28px;padding:34px 44px;border-top:1.5px solid var(--line);border-bottom:1.5px solid var(--line);background:#0e1525">
+      <i id="cb" style="width:52px;height:52px;border-radius:10px;border:3px solid #55658c;display:flex;align-items:center;justify-content:center;color:#fff">${''}</i><span style="font-size:46px;font-weight:700">敏感词</span><span class="chip red" style="font-size:26px">高</span><span style="margin-left:auto;font-size:40px;color:var(--mute)">✎ &nbsp;🗑</span></div>
+    <div id="add" style="display:flex;align-items:center;gap:18px;padding:34px 44px;font-size:42px;font-weight:700;color:#cfe0ff"><span style="font-size:52px;line-height:1">＋</span> 添加規則</div>
+    <div style="display:flex;align-items:center;gap:16px;padding:30px 44px;border-top:1.5px solid var(--line);font-size:38px;font-weight:800">問題分類 <span class="chip" style="font-size:26px">2</span></div>
+  </div>`);
+  const cur=$(`<div class="cursor">${CURSOR}</div>`);
+  [bg,head,panel,cur].forEach(e=>root.appendChild(e));
+  const q=id=>panel.querySelector('#'+id);
+  return {bg,head,panel,cur,cb:q('cb'),cnt:q('cnt'),add:q('add'),row:q('row')};
+},(c,lt,L)=>{
+  c.bg.style.transform=`scale(${.96+lt*.003})`;
+  const a=eo5(seg(lt,.0,.7));css(c.head,{opacity:String(a),transform:`translateX(${(1-a)*-80}px)`});
+  css(c.panel,{opacity:String(a),transform:`translateX(${(1-a)*100}px)`});
+  const pulse=lt>2.4&&lt<3.9?(.5+.5*Math.sin((lt-2.4)*8)):0;c.add.style.background=`rgba(76,141,246,${.18*pulse})`;
+  // cursor to checkbox, click at 5.0
+  const cx=lerp(1500,1010,eio(seg(lt,3.9,4.9))),cy=lerp(720,462,eio(seg(lt,3.9,4.9)));
+  css(c.cur,{left:cx+'px',top:cy+'px',opacity:String(eo(seg(lt,3.8,4.1))),transform:`scale(${lt>4.95&&lt<5.1?.86:1})`});
+  const on=lt>=5.0;
+  c.cb.style.background=on?'var(--blue)':'transparent';c.cb.style.borderColor=on?'var(--blue)':'#55658c';c.cb.innerHTML=on?CHECK:'';
+  c.cnt.textContent=on?'1 / 1':'0 / 1';c.cnt.className='chip '+(on?'blue':'');c.cnt.style.fontSize='28px';
+});
+
+/* ===== b09 model settings ===== */
+addBeat('b09',(root,b)=>{
+  const bg=$(`<img class="shot" src="assets/02_model_settings.png" style="filter:blur(9px) brightness(.34)">`);
+  const ring=$(`<div class="abs" style="left:1848px;top:3px;width:66px;height:66px;border:5px solid var(--blue);border-radius:62px;opacity:0"></div>`);
+  const dlg=$(`<div class="abs panel" style="left:510px;top:150px;width:900px;height:700px;padding:44px 56px;transform-origin:96% 5%">
+    <div style="font-size:48px;font-weight:900">模型設定</div>
+    <div style="margin-top:26px;font-size:28px;color:var(--mute);font-weight:700">AI 供應商</div>
+    <div style="margin-top:8px;height:66px;border:1.5px solid #3a4666;border-radius:12px;padding:0 24px;display:flex;align-items:center;font-size:32px;font-weight:700;background:#0c1220">MiniMax（目前預設）<span style="margin-left:auto;color:var(--mute)">⌄</span></div>
+    <div style="margin-top:22px;font-size:28px;color:var(--mute);font-weight:700">模型名稱</div>
+    <div id="mname" style="margin-top:8px;height:66px;border:1.5px solid #4C8DF6;border-radius:12px;padding:0 24px;display:flex;align-items:center;font-size:32px;font-weight:700;background:#0c1220">MiniMax-M2.7</div>
+    <div style="display:flex;gap:14px;margin-top:16px"><span id="c1" class="chip" style="font-size:24px">MiniMax-M2.7</span><span id="c2" class="chip" style="font-size:24px">MiniMax-Text-01</span></div>
+    <div style="margin-top:24px;font-size:28px;color:var(--mute);font-weight:700">Temperature</div>
+    <div style="display:flex;align-items:center;gap:22px;margin-top:10px"><div style="width:360px;height:8px;border-radius:8px;background:#2a3554;position:relative"><i style="position:absolute;left:0;top:0;height:8px;width:50px;background:var(--blue);border-radius:8px"></i><i style="position:absolute;left:44px;top:-9px;width:26px;height:26px;border-radius:26px;background:#6aa6ff"></i></div><span style="color:#6aa6ff;font-size:28px;font-weight:700">0.2</span></div>
+    <div style="position:absolute;left:56px;right:56px;bottom:40px;display:flex;gap:18px"><span class="btn" style="height:68px;font-size:28px">連線測試</span><span id="save" class="btn" style="height:68px;font-size:28px;background:#2f6fdb;border-color:#2f6fdb">儲存並套用</span><span class="btn" style="height:68px;font-size:28px;border-color:transparent;background:transparent;color:var(--mute)">取消</span></div>
+  </div>`);
+  const toast=$(`<div class="abs" style="left:0;right:0;top:930px;display:flex;justify-content:center;opacity:0"><span class="chip green" style="font-size:34px;padding:12px 30px">已儲存 · 下一次審核即套用</span></div>`);
+  const cur=$(`<div class="cursor">${CURSOR}</div>`);
+  [bg,ring,dlg,toast,cur].forEach(e=>root.appendChild(e));
+  const q=id=>dlg.querySelector('#'+id);
+  return {bg,ring,dlg,toast,cur,mname:q('mname'),c1:q('c1'),c2:q('c2'),save:q('save')};
+},(c,lt,L)=>{
+  const dim=eo(seg(lt,1.5,2.4));c.bg.style.filter=`blur(9px) brightness(${lerp(.62,.32,dim)})`;c.bg.style.transform=`scale(${.96+lt*.002})`;
+  // gear ring pulses while "右上角的齒輪" is spoken
+  const rp=seg(lt,.45,1.9);const rr=(rp*1.6)%1;
+  css(c.ring,{opacity:String(rp>0&&rp<1?1-rr:0),transform:`scale(${1+rr*1.4})`});
+  const d=eo5(seg(lt,1.7,2.5));css(c.dlg,{opacity:String(d),transform:`scale(${lerp(.2,1.12,d)})`});
+  // pick other model at 3.5
+  const sw=lt>=3.6;c.mname.textContent=sw?'MiniMax-Text-01':'MiniMax-M2.7';
+  c.c1.className='chip '+(sw?'':'blue');c.c2.className='chip '+(sw?'blue':'');c.c1.style.fontSize=c.c2.style.fontSize='24px';
+  const cx=lt<4.6?lerp(1200,760,eio(seg(lt,2.9,3.5))):lerp(760,1105,eio(seg(lt,4.4,5.2)));
+  const cy=lt<4.6?lerp(500,560,eio(seg(lt,2.9,3.5))):lerp(560,830,eio(seg(lt,4.4,5.2)));
+  css(c.cur,{left:cx+'px',top:cy+'px',opacity:String(eo(seg(lt,2.8,3.1))),transform:`scale(${(lt>3.55&&lt<3.7)||(lt>5.25&&lt<5.4)?.86:1})`});
+  const sv=lt>=5.3;c.save.style.background=sv?'#17a673':'#2f6fdb';c.save.style.borderColor=sv?'#17a673':'#2f6fdb';c.save.textContent=sv?'✓ 已套用':'儲存並套用';
+  const tu=eo(seg(lt,5.5,5.95));c.toast.style.opacity=String(tu);c.toast.style.transform=`translateY(${(1-tu)*20}px)`;
+});
+
+/* ===== b10 data flow ===== */
+addBeat('b10',(root,b)=>{
+  const svg=$(`<svg class="abs" style="left:0;top:0" width="1920" height="1080"><g fill="none" stroke="#2f4a7d" stroke-width="4" stroke-dasharray="10 10"><path d="M760 470 C 900 470, 980 340, 1140 330"/><path d="M760 610 C 900 610, 980 730, 1140 740"/></g><g id="dots"></g></svg>`);
+  const local=$(`<div class="abs panel" style="left:110px;top:220px;width:650px;height:560px;border-color:#1f6b50;padding:40px 46px">
+    <span class="chip green" style="font-size:30px">本機</span>
+    <div style="font-size:76px;font-weight:900;margin-top:20px">你的電腦</div>
+    <div style="display:flex;flex-direction:column;gap:18px;margin-top:30px;font-size:40px;font-weight:700">
+      <div class="li">▸ PDF 文件</div><div class="li">▸ 審核結果（SQLite）</div><div class="li">▸ 模型設定</div></div></div>`);
+  const mineru=$(`<div class="abs panel" style="left:1140px;top:180px;width:660px;height:300px;border-color:#7a5a1d;padding:34px 46px"><span class="chip amber" style="font-size:28px">外部服務</span><div style="font-size:60px;font-weight:900;margin-top:16px">版面解析</div><div style="font-size:36px;color:var(--mute);font-weight:700;margin-top:6px">MinerU</div></div>`);
+  const llm=$(`<div class="abs panel" style="left:1140px;top:590px;width:660px;height:300px;border-color:#7a5a1d;padding:34px 46px"><span class="chip amber" style="font-size:28px">外部服務</span><div style="font-size:60px;font-weight:900;margin-top:16px">大模型審核</div><div style="font-size:36px;color:var(--mute);font-weight:700;margin-top:6px">你設定的供應商</div></div>`);
+  [svg,local,mineru,llm].forEach(e=>root.appendChild(e));
+  return {svg,local,mineru,llm,lis:[...local.querySelectorAll('.li')],dots:svg.querySelector('#dots')};
+},(c,lt,L)=>{
+  const a=(el,t0,dx)=>{const u=eo5(seg(lt,t0,t0+.6));css(el,{opacity:String(u),transform:`translateX(${(1-u)*dx}px)`})};
+  {const u0=eo5(seg(lt,.0,.6)),m=eio(seg(lt,3.3,4.3));css(c.local,{opacity:String(u0),transform:`translateX(${lerp(480,0,m)+(1-u0)*-80}px) scale(${lerp(1.18,1,m)})`,transformOrigin:'0 50%'})}
+  {const u1=eo5(seg(lt,3.9,4.5)),u2=eo5(seg(lt,4.2,4.8));css(c.mineru,{opacity:String(lerp(.22,1,u1)),transform:`translateX(${(1-u1)*40}px)`});css(c.llm,{opacity:String(lerp(.22,1,u2)),transform:`translateX(${(1-u2)*40}px)`})}
+  c.svg.style.opacity=String(eo(seg(lt,4.0,4.6)));
+  c.local.style.boxShadow=lt<3.6?`0 0 ${50+20*Math.sin(lt*4)}px rgba(54,211,153,.25)`:'none';
+  c.lis.forEach((e,i)=>{const u=eo(seg(lt,.7+i*.45,1.1+i*.45));e.style.opacity=String(u);e.style.transform=`translateX(${(1-u)*30}px)`});
+  // travelling packets (pure function of lt)
+  const pts=[[[760,470],[900,470],[980,340],[1140,330]],[[760,610],[900,610],[980,730],[1140,740]]];
+  const bez=(p,u)=>{const m=1-u;return[m*m*m*p[0][0]+3*m*m*u*p[1][0]+3*m*u*u*p[2][0]+u*u*u*p[3][0],m*m*m*p[0][1]+3*m*m*u*p[1][1]+3*m*u*u*p[2][1]+u*u*u*p[3][1]]};
+  let h='';if(lt>4.9){pts.forEach((p,k)=>{for(let i=0;i<3;i++){const u=(((lt-4.9)*.55)+i/3+k*.17)%1;const [x,y]=bez(p,u);h+=`<circle cx="${x}" cy="${y}" r="9" fill="#F5B84B" opacity="${Math.sin(u*Math.PI)}"/>`}})}
+  c.dots.innerHTML=h;
+});
+
+/* ===== b11 close ===== */
+addBeat('b11',(root,b)=>{
+  const fan=[['03_review_overview',-1],['04_issue_detail',0],['05_rules_panel',1]].map((f,i)=>$(`<img src="assets/${f[0]}.png" class="abs" style="left:${580+f[1]*20}px;top:118px;width:760px;height:456px;border-radius:12px;box-shadow:0 30px 90px rgba(0,0,0,.7);opacity:0">`));
+  const logo=$(`<div class="abs" style="left:880px;top:560px;width:160px;height:160px;opacity:0">${SHIELD}</div>`);
+  const t1=$(`<div class="abs h-xl" style="left:0;right:0;top:650px;text-align:center;font-size:116px;opacity:0">AI 先審一遍<span style="color:#8db8ff">，人做最後決定</span></div>`);
+  const t2=$(`<div class="abs" style="left:0;right:0;top:810px;text-align:center;font-size:48px;font-weight:800;letter-spacing:6px;color:var(--mute);opacity:0">AI 文檔審核系統</div>`);
+  const t3=$(`<div class="abs" style="left:0;right:0;top:890px;text-align:center;font-size:34px;font-weight:600;color:#8a99bd;opacity:0">專案展示 · 畫面為實際系統截圖 · 示範文件為公開基金年報</div>`);
+  [...fan,logo,t1,t2,t3].forEach(e=>root.appendChild(e));
+  return {fan,logo,t1,t2,t3};
+},(c,lt,L)=>{
+  c.fan.forEach((e,i)=>{const t0=.1+i*.25;const u=eo5(seg(lt,t0,t0+.8));const dx=(i-1)*430;css(e,{opacity:String(u),transform:`translate(${dx*u}px,${(1-u)*60}px) rotate(${(i-1)*5*u}deg) scale(${lerp(.9,1,u)+lt*.004})`})});
+  const a=(el,t0,dy=40)=>{const u=eo(seg(lt,t0,t0+.6));css(el,{opacity:String(u),transform:`translateY(${(1-u)*dy}px)`})};
+  c.logo.style.display='none';
+  a(c.t1,.55);a(c.t2,1.6,24);a(c.t3,2.4,16);
+});
+
+/* ---------- rail + caption + seek ---------- */
+const RAIL_LABELS={b01:'問題',b02:'介紹',b03:'解析',b04:'審核',b05:'總覽',b06:'定位',b07:'決策',b08:'規則',b09:'模型',b10:'資料去向',b11:'結語'};
+const rail=document.getElementById('rail');const dots=TL.beats.map(b=>{const d=document.createElement('div');d.className='dot';d.textContent=RAIL_LABELS[b.id];rail.appendChild(d);return d});
+const capEl=document.querySelector('#caption span'),capWrap=document.getElementById('caption'),sweep=document.getElementById('sweep');
+function pieces(b){
+  let p=b.text.split(/(?<=[，。？、])/).map(s=>s.trim()).filter(Boolean);
+  const n=b.speech.length;
+  while(p.length>n){let bi=0,bl=1e9;for(let i=0;i<p.length-1;i++){const l=p[i].length+p[i+1].length;if(l<bl){bl=l;bi=i}}p.splice(bi,2,p[bi]+p[bi+1])}
+  return p;
+}
+const CAPS=TL.beats.map(b=>pieces(b));
+window.seek=function(t){
+  t=clamp(Number(t)||0,0,TL.duration-1/TL.fps);
+  let activeIdx=0;
+  beats.forEach(({b,root,ctx,update},i)=>{
+    const lt=t-b.start,L=b.end-b.start;
+    const vis=t>=b.start-0.2&&t<b.end+0.3;
+    root.style.display=vis?'block':'none';
+    if(!vis)return;
+    const inn=i===0?1:eo(seg(t,b.start-0.18,b.start+0.32));
+    const out=eio(seg(t,b.end-0.12,b.end+0.28));
+    const push=1+0.045*clamp(lt/L);const sc=lerp(i===0?1:.96,1,inn)*lerp(1,1.05,out)*push;
+    root.style.opacity=String(clamp(inn*(1-out)));
+    root.style.transform=`translate(${-14*clamp(lt/L)}px,${-6*clamp(lt/L)}px) scale(${sc})`;
+    root.style.transformOrigin='50% 50%';
+    update(ctx,lt,L);
+    if(t>=b.start-0.1&&t<b.end-0.1)activeIdx=i;
+  });
+  // rail
+  rail.style.opacity=(activeIdx===5||activeIdx===10)?String(1-eo(seg(t,TL.beats[activeIdx].start+0.1,TL.beats[activeIdx].start+0.5))*0.9):'1';
+  dots.forEach((d,i)=>{const on=i===activeIdx;d.style.width=on?'150px':'38px';d.style.height=on?'40px':'12px';d.style.background=on?'#2f6fdb':(i<activeIdx?'#3e5fa0':'#27324d');d.style.color=on?'#fff':'transparent';d.style.borderRadius='30px'});
+  // caption
+  const b=TL.beats[activeIdx];const sp=SPEECH(b);const lt=t-b.start;let shown='';
+  if(lt>=sp[0][0]-.05){let k=0;for(let i=0;i<sp.length;i++)if(lt>=sp[i][0]-.05)k=i;shown=CAPS[activeIdx][Math.min(k,CAPS[activeIdx].length-1)];
+    if(lt>sp[sp.length-1][1]+.35)shown='';}
+  capEl.textContent=shown;capWrap.style.opacity=shown?'1':'0';
+  // transition sweep at each beat boundary (same direction every time)
+  let sw=0,sx=0;for(let i=1;i<TL.beats.length;i++){const s=TL.beats[i].start;const u=seg(t,s-.12,s+.42);if(u>0&&u<1){sw=Math.sin(u*Math.PI);sx=lerp(-500,2300,eio(u))}}
+  sweep.style.opacity=String(sw);sweep.style.left=sx+'px';
+  window.CURRENT_TIME=t;
+};
+window.seek(0);
+</script>
+</body>
+</html>

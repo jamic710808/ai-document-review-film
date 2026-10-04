@@ -1,0 +1,12 @@
+node_modules/
+stills*/
+sheet*.png
+s2*.png
+s3.png
+renders/
+review/*.jpg
+review/*.log
+audio/_*.wav
+audio/master.wav
+assets/music/
+assets/02_model_settings.png
